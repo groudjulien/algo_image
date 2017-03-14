@@ -1,43 +1,135 @@
 import cv2
 import numpy
 import random
+import time
 
+# Fonction qui permet d'afficher une image dans une fenetre
+# @param {STRING} nomFenetre - nom de la fenetre qui sera cree
+# @param {MATRICE} img - une image a afficher
+# @return void - ne retourne rien
+def afficherImage( nomFenetre , img ):
+    # Affichage de l'image
+    cv2.imshow(nomFenetre, img)
 
+    # On attend que l'utilisateur appuie sur une touche => temps infinie
+    key = cv2.waitKey(0)
 
+    # on ferme toutes les fenetre ouverte
+    cv2.destroyAllWindows()
 
-def main():
+# Fonction qui realise un seuil
+# @param {MATRICE} img - image source
+# @param {MATRICE} valeur_seuil - la valeur de seuil
+# @return {MATRICE} - retourne l'image seuille
+def seuil( img, valeur_seuil):
+    r = numpy.zeros(img.shape, img.dtype)
+    idx = (img>=valeur_seuil)
+    r[idx] = numpy.iinfo(img.dtype).max
+    return r
+
+def seuil_otsu( histo ):
+
+    # calcul de la moyenne des pixels
+    somme = 0
+    somme_positif = 0
+    nb_pixel_positif = 0
+    val_max_pixel = 0
+    for i in xrange(0,256):
+        if (i > 0 and histo[i] > 0):
+            somme_positif = somme_positif + histo[i]*i
+            nb_pixel_positif = nb_pixel_positif + histo[i]
+        if(i > val_max_pixel and histo[i] > 0):
+            val_max_pixel = i
+
+    N = numpy.sum(histo)
+
+    # calcul des premiers parametrages
+    g1 = histo[0]
+    mu1 = 0
+    g2 = N - g1
+    mu2 = float(somme_positif / nb_pixel_positif)
+
+    best_var = (g1 * g2) / (N * N) * ((mu1 - mu2) * (mu1 - mu2))
+    best_seuil = 0
+
+    #print N
+    #print g2
+    #print mu2
+    #print best_var
+    #print val_max_pixel
+
+    for t in xrange(1,val_max_pixel):
+        mu1 = mu1 * g1 + t * histo[t]
+        mu2 = mu2 * g2 - t * histo[t]
+
+        g1 = g1 + histo[t]
+        g2 = g2 - histo[t]
+
+        if g1 > 0:
+            mu1 = mu1 / g1
+
+        if g2 > 0:
+            mu2 = mu2 / g2
+
+        if g1 > 0 and g2 > 0:
+            if (g1*g2) / (N*N)*((mu1-mu2)*(mu1-mu2)) > best_var:
+                best_var = (g1*g2) / (N*N)*((mu1-mu2)*(mu1-mu2))
+                best_seuil = t
+
+    #print best_seuil
+    #print best_var
+
+    return best_seuil
+
+def main( param, param_k ):
     MAX_LARGEUR = 400
     MAX_HAUTEUR = 400
 
-    K = 3 #Le fameux parametre K de l'algorithme
+    K = param_k #Le fameux parametre K de l'algorithme
 
+    start = time.clock()
 
+    somme_etape = 0
 
     # Charger l'image et la reduire si trop grande (sinon, on risque de passer trop de temps sur le calcul...)
-    imagecolor = cv2.imread('perr.jpg')
+    if( param == "OTSU" ):
+        imagecolor = cv2.imread('ville.png')
+    else:
+        imagecolor = cv2.imread('perr.jpg')
     if imagecolor.shape[0] > MAX_LARGEUR or imagecolor.shape[1] > MAX_HAUTEUR:
         factor1 = float(MAX_LARGEUR) / imagecolor.shape[0]
         factor2 = float(MAX_HAUTEUR) / imagecolor.shape[1]
         factor = min(factor1, factor2)
         imagecolor = cv2.resize(imagecolor, None, fx=factor, fy=factor, interpolation=cv2.INTER_AREA)
 
+    imagecolorRes = numpy.copy(imagecolor)
 
+    if (param == "HSV"):
+        imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_BGR2HSV)
+    elif (param == "LAB"):
+        imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_BGR2LAB)
 
     # Le nombre de pixels de l'image
-    nb_pixels = imagecolor.shape[0] * imagecolor.shape[1]
+    nb_pixels = imagecolorRes.shape[0] * imagecolorRes.shape[1]
 
+    afficherImage("Image", imagecolor)
 
-    # On affiche une fenetre avec l'image
-    # cv2.namedWindow("image")
-    #On sort quand l'utilisateur appuie sur une touche
-    #cv2.imshow("image", imagecolor)
-    #key = cv2.waitKey(0)
+    if (param == "OTSU"):
+        imagecolor = cv2.imread('ville.png')
+
+        imagecolorOtsu = numpy.copy(imagecolor)
+
+        histo = cv2.calcHist([imagecolorOtsu], [0], None, [256], [0, 256])
+        best_seuil = seuil_otsu(histo)
+        imagecolorOtsu = seuil(imagecolorOtsu, best_seuil)
+
+        afficherImage("Otsu", imagecolorOtsu)
 
 
     #Les coordonnees BRV de tous les pixels de l'image (les elements de E)
-    bleu = imagecolor[:, :, 0].reshape(nb_pixels, 1)
-    vert = imagecolor[:, :, 1].reshape(nb_pixels, 1)
-    rouge = imagecolor[:, :, 2].reshape(nb_pixels, 1)
+    bleu = imagecolorRes[:, :, 0].reshape(nb_pixels, 1)
+    vert = imagecolorRes[:, :, 1].reshape(nb_pixels, 1)
+    rouge = imagecolorRes[:, :, 2].reshape(nb_pixels, 1)
 
 
 
@@ -53,16 +145,14 @@ def main():
     groupe = numpy.zeros((nb_pixels, 1)) #groupe est un tableau de Card(E) cases, et chaque valeur est un entier entre 0 et K-1, designant le cluster auquel chaque point sera rattache
     #On remplit au hasard le tableau groupe, c'est a dire que l'on attribue au hasard chaque point de l'espace a un des K clusters
     #Cependant, pour etre sur qu'au depart chaque cluster est rattache a au moins un point de l'espace, on attribue les K premiers points de l'espace a chaque K clusters
-    for i in range(0,K):
+    for i in xrange(0,K):
         groupe[i,0]=i
     #La, on fait l'attribution du reste des points de l'espace a des clusters choisis au hasard
-    for i in range(K,nb_pixels):
+    for i in xrange(K,nb_pixels):
         groupe[i,0]=random.randint(0, K-1)
 
-    print nb_pixels
-    print numpy.size(rouge)
-
-    for i in range(0, K):
+    # Initialisation des clusters dans une position aleatoire
+    for i in xrange(0, K):
         cluster_bleu[i]=random.randint(0, 255)
         cluster_vert[i]=random.randint(0, 255)
         cluster_rouge[i]=random.randint(0, 255)
@@ -73,18 +163,21 @@ def main():
     # permet de boucler tant que les clusters changent
     there_are_no_modification = 0
 
-    print "Nombre de linges et colonnes"
-    print imagecolor.shape[0]
-    print imagecolor.shape[1]
+    #print "Nombre de linges et colonnes"
+    #print imagecolorRes.shape[0]
+    #print imagecolorRes.shape[1]
 
     # Boucle tant que les clusters changent
     while( there_are_no_modification == 0 ):
+
+        somme_etape += 1
+
         old_cluster_bleu = numpy.copy(cluster_bleu)
         old_cluster_vert = numpy.copy(cluster_vert)
         old_cluster_rouge = numpy.copy(cluster_rouge)
 
         # Calcul des positions des nouveaux points cluster
-        for i in range(0,K):
+        for i in xrange(0,K):
             barycentre_rouge = 0
             barycentre_vert = 0
             barycentre_bleu = 0
@@ -92,14 +185,20 @@ def main():
             taille_du_groupe = 0
 
             # Calcul du barycentre
-            for j in range( 0, nb_pixels-1 ):
-                if( groupe[j,0] == i ):
-                    barycentre_rouge = barycentre_rouge + rouge[j,0]
-                    barycentre_vert = barycentre_vert + vert[j,0]
-                    barycentre_bleu = barycentre_bleu + bleu[j,0]
-                    taille_du_groupe += 1
+            idx = (groupe[:,0] == i)
+            taille_du_groupe = (groupe[:,0] == i).sum()
+            barycentre_rouge = numpy.sum(rouge[idx])
+            barycentre_vert = numpy.sum(vert[idx])
+            barycentre_bleu = numpy.sum(bleu[idx])
 
-            print "Groupe = "+str(i)+" de taille = "+str(taille_du_groupe)
+            #for j in xrange( 0, nb_pixels-1 ):
+            #    if( groupe[j,0] == i ):
+            #        barycentre_rouge = barycentre_rouge + rouge[j,0]
+            #        barycentre_vert = barycentre_vert + vert[j,0]
+            #        barycentre_bleu = barycentre_bleu + bleu[j,0]
+            #        taille_du_groupe += 1
+
+            #print "Groupe = "+str(i)+" de taille = "+str(taille_du_groupe)
 
             #print "Barycentre rouge : "+str(barycentre_rouge)
             #print "Barycentre vert : "+str(barycentre_vert)
@@ -136,15 +235,25 @@ def main():
         #print cluster_bleu
 
         # Reaffiliation des points aux nouveaux clusters
-        for f in range(K, nb_pixels):
-            distance_cluster = numpy.zeros(K)
+        valeurs_connus = dict()
+        for f in xrange(K, nb_pixels):
             index_k_min = -1
-            distance_reference = -1
-            for t in range(0,K):
-                distance_cluster[t] = ( (bleu[f] - cluster_bleu[t]) ) ** 2 + abs( (vert[f] - cluster_vert[t]) ) ** 2 + abs( (rouge[f] - cluster_rouge[t]) ) ** 2
-                if(index_k_min == -1 or distance_cluster[t] < distance_reference):
-                    distance_reference = distance_cluster[t]
-                    index_k_min = t
+            if ( valeurs_connus.has_key(bleu[f,0]) and valeurs_connus[bleu[f,0]].has_key(vert[f,0]) and valeurs_connus[bleu[f,0]][vert[f,0]].has_key(rouge[f,0]) ):
+                index_k_min = valeurs_connus[bleu[f,0]][vert[f,0]][rouge[f,0]]
+            else :
+                distance_cluster = numpy.zeros(K)
+                distance_reference = -1
+                for t in xrange(0, K):
+                    distance_cluster[t] = ((bleu[f,0] - cluster_bleu[t])) ** 2 + abs(
+                        (vert[f,0] - cluster_vert[t])) ** 2 + abs((rouge[f,0] - cluster_rouge[t])) ** 2
+                    if (index_k_min == -1 or distance_cluster[t] < distance_reference):
+                        distance_reference = distance_cluster[t]
+                        index_k_min = t
+                        if( not valeurs_connus.has_key(bleu[f,0]) ):
+                            valeurs_connus[bleu[f, 0]] = dict()
+                        if( not valeurs_connus[bleu[f,0]].has_key(vert[f,0]) ):
+                            valeurs_connus[bleu[f, 0]][vert[f, 0]] = dict()
+                        valeurs_connus[bleu[f,0]][vert[f,0]][rouge[f,0]] = t
 
             groupe[f, 0] = index_k_min
 
@@ -162,26 +271,31 @@ def main():
     #Fin de l'algo, on affiche les resultats
 
     #On change le format de groupe afin de le rammener au format de l'image d'origine
-    groupe=numpy.reshape(groupe, (imagecolor.shape[0], imagecolor.shape[1]))
+    groupe=numpy.reshape(groupe, (imagecolorRes.shape[0], imagecolorRes.shape[1]))
 
     #On change chaque pixel de l'image selon le cluster auquel il appartient
     #Il prendre comme nouvelle valeur la position moyenne du cluster
-    for i in range(0, imagecolor.shape[0]):
-        for j in range(0, imagecolor.shape[1]):
-            imagecolor[i,j,0] = (cluster_bleu[int(groupe[i,j])])
-            imagecolor[i,j,1] = (cluster_vert[int(groupe[i,j])])
-            imagecolor[i,j,2] = (cluster_rouge[int(groupe[i,j])])
+    for i in xrange(0, imagecolorRes.shape[0]):
+        for j in xrange(0, imagecolorRes.shape[1]):
+            imagecolorRes[i,j,0] = (cluster_bleu[int(groupe[i,j])])
+            imagecolorRes[i,j,1] = (cluster_vert[int(groupe[i,j])])
+            imagecolorRes[i,j,2] = (cluster_rouge[int(groupe[i,j])])
 
+    if (param == "HSV"):
+        imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_HSV2BGR)
+    elif(param == "LAB"):
+        imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_LAB2BGR)
 
+    end = time.clock()
+    value = end - start
+    print "Duree = "+str(value)+"secondes pour K="+str(K)+", pour "+str(somme_etape)+" etapes et pour le mode "+str(param)
 
-	
-    # On affiche une fenetre avec l'image
-    cv2.namedWindow("sortie")
-    #On sort quand l'utilisateur appuie sur une touche
-    cv2.imshow("sortie", imagecolor)
-    key = cv2.waitKey(0)
+    afficherImage("sortie", imagecolorRes)
 
 
 
 if __name__ == "__main__":
-    main()
+    main( "normal",3 )
+    main( "HSV",3 )
+    main( "LAB",3 )
+    #main( "OTSU",2 )
