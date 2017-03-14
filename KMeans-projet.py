@@ -28,10 +28,10 @@ def main():
 
 
     # On affiche une fenetre avec l'image
-    cv2.namedWindow("image")
+    # cv2.namedWindow("image")
     #On sort quand l'utilisateur appuie sur une touche
-    cv2.imshow("image", imagecolor)
-    key = cv2.waitKey(0)
+    #cv2.imshow("image", imagecolor)
+    #key = cv2.waitKey(0)
 
 
     #Les coordonnees BRV de tous les pixels de l'image (les elements de E)
@@ -59,8 +59,13 @@ def main():
     for i in range(K,nb_pixels):
         groupe[i,0]=random.randint(0, K-1)
 
+    print nb_pixels
+    print numpy.size(rouge)
 
-
+    for i in range(0, K):
+        cluster_bleu[i]=random.randint(0, 255)
+        cluster_vert[i]=random.randint(0, 255)
+        cluster_rouge[i]=random.randint(0, 255)
 
     #La, c'est a vous d'ecrire le code de la boucle principale
     #Votre code doit faire evoluer les tableaux groupe, cluster_bleu, cluster_rouge et cluster_vert
@@ -80,43 +85,68 @@ def main():
 
         # Calcul des positions des nouveaux points cluster
         for i in range(0,K):
-            idx = (groupe[:,0] == i)
             barycentre_rouge = 0
             barycentre_vert = 0
             barycentre_bleu = 0
 
-            taille_du_groupe = numpy.count_nonzero(idx == 1)
-
-            print "Taille du groupe = "
-            print taille_du_groupe
+            taille_du_groupe = 0
 
             # Calcul du barycentre
-            for j in range( 0,taille_du_groupe ):
-                y = j%imagecolor.shape[1]
-                x = int(int(j)/int(imagecolor.shape[1]))
-                barycentre_rouge += imagecolor[ x, y, 2 ]
-                barycentre_vert += imagecolor[ x, y, 1 ]
-                barycentre_bleu += imagecolor[ x, y, 0 ]
+            for j in range( 0, nb_pixels-1 ):
+                if( groupe[j,0] == i ):
+                    barycentre_rouge = barycentre_rouge + rouge[j,0]
+                    barycentre_vert = barycentre_vert + vert[j,0]
+                    barycentre_bleu = barycentre_bleu + bleu[j,0]
+                    taille_du_groupe += 1
+
+            print "Groupe = "+str(i)+" de taille = "+str(taille_du_groupe)
+
+            #print "Barycentre rouge : "+str(barycentre_rouge)
+            #print "Barycentre vert : "+str(barycentre_vert)
+            #print "Barycentre bleu : "+str(barycentre_bleu)
 
             barycentre_rouge = int(barycentre_rouge/taille_du_groupe)
             barycentre_vert = int(barycentre_vert/taille_du_groupe)
             barycentre_bleu = int(barycentre_bleu/taille_du_groupe)
 
+            #print "Barycentre rouge : "+str(barycentre_rouge)
+            #print "Barycentre vert : "+str(barycentre_vert)
+            #print "Barycentre bleu : "+str(barycentre_bleu)
+
             # pour le moment on met les nouveaux cluster au niveau des barycentres
-            cluster_bleu[i] = barycentre_bleu
-            cluster_vert[i] = barycentre_vert
-            cluster_rouge[i] = barycentre_rouge
+            if( barycentre_bleu > cluster_bleu[i] ):
+                cluster_bleu[i] = cluster_bleu[i] + min(10, (barycentre_bleu-cluster_bleu[i]) )
+            else:
+                cluster_bleu[i] = cluster_bleu[i] - min(10, (cluster_bleu[i]-barycentre_bleu))
+            if( barycentre_vert > cluster_vert[i] ):
+                cluster_vert[i] = cluster_vert[i] + min(10, (barycentre_vert-cluster_vert[i]) )
+            else:
+                cluster_vert[i] = cluster_vert[i] - min(10, (cluster_vert[i]-barycentre_vert))
+            if( barycentre_rouge > cluster_rouge[i] ):
+                cluster_rouge[i] = cluster_rouge[i] + min(10, (barycentre_rouge-cluster_rouge[i]) )
+            else:
+                cluster_rouge[i] = cluster_rouge[i] - min(10, (cluster_rouge[i]-barycentre_rouge))
+
+            #print "cluster_rouge : "+str(cluster_rouge[i])
+            #print "cluster_vert : "+str(cluster_vert[i])
+            #print "cluster_bleu : "+str(cluster_bleu[i])
+
+        #print cluster_rouge
+        #print cluster_vert
+        #print cluster_bleu
 
         # Reaffiliation des points aux nouveaux clusters
         for f in range(K, nb_pixels):
             distance_cluster = numpy.zeros(K)
-            y = f % imagecolor.shape[1]
-            x = f / imagecolor.shape[1]
+            index_k_min = -1
+            distance_reference = -1
             for t in range(0,K):
-                distance_cluster[t] += abs(imagecolor[x, y, 2] - cluster_bleu[t])
-                distance_cluster[t] += abs(imagecolor[x, y, 1] - cluster_vert[t])
-                distance_cluster[t] += abs(imagecolor[x, y, 0] - cluster_rouge[t])
-            groupe[f, 0] = numpy.argmin(distance_cluster)
+                distance_cluster[t] = ( (bleu[f] - cluster_bleu[t]) ) ** 2 + abs( (vert[f] - cluster_vert[t]) ) ** 2 + abs( (rouge[f] - cluster_rouge[t]) ) ** 2
+                if(index_k_min == -1 or distance_cluster[t] < distance_reference):
+                    distance_reference = distance_cluster[t]
+                    index_k_min = t
+
+            groupe[f, 0] = index_k_min
 
         # Si il n'y a pas de changement par rapport a la derniere etape : on osrt
         if( (old_cluster_bleu==cluster_bleu).all() and (old_cluster_vert==cluster_vert).all() and (old_cluster_rouge==cluster_rouge).all() ):
