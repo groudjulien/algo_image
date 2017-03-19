@@ -4,6 +4,8 @@ import random
 import time
 
 DISTANCE_DEPLACEMENT = 20
+PRINT_IMAGE = 1
+DO_NOT_PRINT_IMAGE = 0
 
 # Fonction qui permet d'afficher une image dans une fenetre
 # @param {STRING} nomFenetre - nom de la fenetre qui sera cree
@@ -83,9 +85,7 @@ def seuil_otsu( histo ):
 
 	return best_seuil
 
-def main( param, param_k ):
-
-	numpy.random.seed( 0 )
+def kmean(path_to_file, param, param_k, print_image = 1 ):
 
 	MAX_LARGEUR = 400
 	MAX_HAUTEUR = 400
@@ -97,10 +97,12 @@ def main( param, param_k ):
 	somme_etape = 0
 
 	# Charger l'image et la reduire si trop grande (sinon, on risque de passer trop de temps sur le calcul...)
-	if( param == "OTSU" ):
-		imagecolor = cv2.imread('ville.png')
-	else:
-		imagecolor = cv2.imread('perr.jpg')
+	imagecolor = cv2.imread(path_to_file)
+	
+	if imagecolor is None:
+		print "Le fichier \""+path_to_file+"\" n'as pas ete trouver"
+		exit(-1)
+	
 	if imagecolor.shape[0] > MAX_LARGEUR or imagecolor.shape[1] > MAX_HAUTEUR:
 		factor1 = float(MAX_LARGEUR) / imagecolor.shape[0]
 		factor2 = float(MAX_HAUTEUR) / imagecolor.shape[1]
@@ -120,7 +122,7 @@ def main( param, param_k ):
 	#afficherImage("Image", imagecolor)
 
 	if (param == "OTSU"):
-		imagecolor = cv2.imread('ville.png')
+		imagecolor = cv2.imread(path_to_file)
 
 		imagecolorOtsu = numpy.copy(imagecolor)
 
@@ -219,7 +221,7 @@ def main( param, param_k ):
 		# on test le zip.. ###
 		# test_groupe = [  ]
 		
-		start_c = time.clock()
+		#start_c = time.clock()
 		#numpy.set_printoptions(threshold=numpy.nan)
 		
 		distances_cluster2 = (bleu[:, numpy.newaxis] - cluster_bleu)**2 + (rouge[:, numpy.newaxis] - cluster_rouge)**2 + (vert[:, numpy.newaxis] - cluster_vert)**2
@@ -240,31 +242,44 @@ def main( param, param_k ):
 		print groupe
 		"""
 		
-		end_c = time.clock()
-		value_c = end_c - start_c
-		print "temps : %s" % (value_c)
+		#end_c = time.clock()
+		#value_c = end_c - start_c
+		#print "temps : %s" % (value_c)
 
 		# Si il n'y a pas de changement par rapport a la derniere etape : on sort
 		if( difference == 0 ):
 			there_are_no_modification = 1
 
-	print cluster_bleu
-	print cluster_vert
-	print cluster_rouge
+	#print cluster_bleu
+	#print cluster_vert
+	#print cluster_rouge
 
-	#Fin de l'algo, on affiche les resultats
+	# Fin de l'algo, on affiche les resultats
 
-	#On change le format de groupe afin de le rammener au format de l'image d'origine
+	# On change le format de groupe afin de le rammener au format de l'image d'origine
 	groupe=numpy.reshape(groupe, (imagecolorRes.shape[0], imagecolorRes.shape[1]))
 
-	#On change chaque pixel de l'image selon le cluster auquel il appartient
-	#Il prendre comme nouvelle valeur la position moyenne du cluster
-	#imagecolorRes[:, :] = [ (cluster_bleu[int(groupe[:,:])]) , (cluster_vert[int(groupe[:,:])]), (cluster_rouge[int(groupe[:,:])]) ]
+	# On change chaque pixel de l'image selon le cluster auquel il appartient
+	# Il prendre comme nouvelle valeur la position moyenne du cluster
+	# imagecolorRes[:, :] = [ (cluster_bleu[int(groupe[:,:])]) , (cluster_vert[int(groupe[:,:])]), (cluster_rouge[int(groupe[:,:])]) ]
+	start_d = time.clock()
+	"""
+	
 	for i in xrange(0, imagecolorRes.shape[0]):
 		for j in xrange(0, imagecolorRes.shape[1]):
 			imagecolorRes[i,j,0] = (cluster_bleu[int(groupe[i,j])])
 			imagecolorRes[i,j,1] = (cluster_vert[int(groupe[i,j])])
 			imagecolorRes[i,j,2] = (cluster_rouge[int(groupe[i,j])])
+	
+	"""
+	
+	tmp_bleu = cluster_bleu[groupe]
+	
+	# imagecolorRes = zip(cluster_bleu[groupe], cluster_vert[groupe], cluster_rouge[groupe])
+	
+	end_d = time.clock()
+	value_d = end_d - start_d
+	#print "temps : %s" % (value_d)
 
 	if (param == "HSV"):
 		imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_HSV2BGR)
@@ -273,13 +288,64 @@ def main( param, param_k ):
 
 	end = time.clock()
 	value = end - start
-	print "Duree = "+str(value)+"secondes pour K="+str(K)+", pour "+str(somme_etape)+" etapes et pour le mode "+str(param)
+	#print "Duree = "+str(value)+"secondes pour K="+str(K)+", pour "+str(somme_etape)+" etapes et pour le mode "+str(param)
 
-	afficherImage("sortie", imagecolorRes)
+	if print_image :
+		afficherImage("sortie", imagecolorRes)
+		
+	#distances_cluster2 = (bleu[:, numpy.newaxis] - cluster_bleu)**2 + (rouge[:, numpy.newaxis] - cluster_rouge)**2 + (vert[:, numpy.newaxis] - cluster_vert)**2
+	#return sorted(zip(cluster_bleu, cluster_vert, cluster_rouge))
+	return sorted(zip(cluster_bleu, cluster_vert, cluster_rouge))
 
-
+def find_nb_cluster(file_to_path, param):
+	number_test = 20
+	
+	print 'filename : %s, number_test : %s' % (file_to_path, number_test)
+	
+	for k_test in xrange(2, 15):
+		t = []
+		for i in xrange(0, number_test):
+			t.append(kmean(file_to_path, param, k_test, DO_NOT_PRINT_IMAGE))
+			
+		#print t
+		
+		
+		point = [0,0,0]
+		
+		tot = 0
+		# on trouve le point associe a point t[0][0] le plus proche dans t[1], et on calcul la distance
+		for l in xrange(1, number_test):
+			for i in xrange(0, k_test):
+				d = 1000000
+				
+				#print 'point a associe'+str(t[0][i])
+				
+				for j in xrange(0, k_test):
+				
+					d_temp = (t[0][i][0] - t[l][j][0])**2 + (t[0][i][1] - t[l][j][1])**2 + (t[0][i][2] - t[l][j][2])**2
+					#print 'test : point '+str(t[1][j])+' d : '+str(d_temp)
+					if d_temp < d:
+						#print 'nouveau d !'
+						d = d_temp
+						point = t[1][i]
+						
+				# print 'Here : %s, %s, %s' % (t[0][i], point, d)
+				tot +=d
+		
+		print 'nb cluster : %s, distance = %s' % (k_test, tot)
+	
 if __name__ == "__main__":
-	main( "normal",32 )
-	#main( "HSV",3 )
-	#main( "LAB",3 )
-	#main( "OTSU",2 )
+	#numpy.random.seed( 0 )
+
+	# 1
+	#kmean('perr.jpg', "normal", 8)
+	
+	# 2
+	#kmean('perr.jpg', "HSV", 8)
+	#kmean('perr.jpg', "LAB", 8)
+	
+	# 3
+	#kmean('ville.png', "OTSU", 8)
+	
+	# 4
+	find_nb_cluster('mimi2.jpg', "normal")
