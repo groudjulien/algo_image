@@ -4,6 +4,8 @@ import random
 import time
 
 DISTANCE_DEPLACEMENT = 20
+PRINT_IMAGE = 1
+DO_NOT_PRINT_IMAGE = 0
 
 # Fonction qui permet d'afficher une image dans une fenetre
 # @param {STRING} nomFenetre - nom de la fenetre qui sera cree
@@ -54,12 +56,6 @@ def seuil_otsu( histo ):
 	best_var = (g1 * g2) / (N * N) * ((mu1 - mu2) * (mu1 - mu2))
 	best_seuil = 0
 
-	#print N
-	#print g2
-	#print mu2
-	#print best_var
-	#print val_max_pixel
-
 	for t in xrange(1,val_max_pixel):
 		mu1 = mu1 * g1 + t * histo[t]
 		mu2 = mu2 * g2 - t * histo[t]
@@ -78,14 +74,9 @@ def seuil_otsu( histo ):
 				best_var = (g1*g2) / (N*N)*((mu1-mu2)*(mu1-mu2))
 				best_seuil = t
 
-	#print best_seuil
-	#print best_var
-
 	return best_seuil
 
-def main( param, param_k ):
-
-	numpy.random.seed( 0 )
+def kmean(path_to_file, param, param_k, print_image = 1 ):
 
 	MAX_LARGEUR = 400
 	MAX_HAUTEUR = 400
@@ -97,10 +88,12 @@ def main( param, param_k ):
 	somme_etape = 0
 
 	# Charger l'image et la reduire si trop grande (sinon, on risque de passer trop de temps sur le calcul...)
-	if( param == "OTSU" ):
-		imagecolor = cv2.imread('ville.png')
-	else:
-		imagecolor = cv2.imread('perr.jpg')
+	imagecolor = cv2.imread(path_to_file)
+	
+	if imagecolor is None:
+		print "Le fichier \""+path_to_file+"\" n'as pas ete trouver"
+		exit(-1)
+	
 	if imagecolor.shape[0] > MAX_LARGEUR or imagecolor.shape[1] > MAX_HAUTEUR:
 		factor1 = float(MAX_LARGEUR) / imagecolor.shape[0]
 		factor2 = float(MAX_HAUTEUR) / imagecolor.shape[1]
@@ -120,7 +113,7 @@ def main( param, param_k ):
 	#afficherImage("Image", imagecolor)
 
 	if (param == "OTSU"):
-		imagecolor = cv2.imread('ville.png')
+		imagecolor = cv2.imread(path_to_file)
 
 		imagecolorOtsu = numpy.copy(imagecolor)
 
@@ -150,11 +143,12 @@ def main( param, param_k ):
 	groupe = numpy.zeros((nb_pixels, 1)) #groupe est un tableau de Card(E) cases, et chaque valeur est un entier entre 0 et K-1, designant le cluster auquel chaque point sera rattache
 	#On remplit au hasard le tableau groupe, c'est a dire que l'on attribue au hasard chaque point de l'espace a un des K clusters
 	#Cependant, pour etre sur qu'au depart chaque cluster est rattache a au moins un point de l'espace, on attribue les K premiers points de l'espace a chaque K clusters
+	
 	for i in xrange(0,K):
 		groupe[i,0]=i
 	#La, on fait l'attribution du reste des points de l'espace a des clusters choisis au hasard
-	#for i in xrange(K,nb_pixels):
-		#groupe[i,0]=random.randint(0, K-1)
+	#for i in range(K,nb_pixels):
+	#	groupe[i,0]=random.randint(0, K-1)
 	groupe[K:nb_pixels, 0] = numpy.random.randint(0,high=K, size=(nb_pixels-K)).astype('uint8')
 
 	# Initialisation des clusters dans une position aleatoire
@@ -193,7 +187,7 @@ def main( param, param_k ):
 				barycentre_vert = int(barycentre_vert/taille_du_groupe)
 				barycentre_bleu = int(barycentre_bleu/taille_du_groupe)
 
-			# pour le moment on met les nouveaux cluster au niveau des barycentres
+			# Deplacement des clusters vers vers leurs barycentre.
 			if( barycentre_bleu > cluster_bleu[i] ):
 				difference += min(DISTANCE_DEPLACEMENT, (barycentre_bleu-cluster_bleu[i]) )
 				cluster_bleu[i] = cluster_bleu[i] + min(DISTANCE_DEPLACEMENT, (barycentre_bleu-cluster_bleu[i]) )
@@ -213,73 +207,81 @@ def main( param, param_k ):
 				difference += min(DISTANCE_DEPLACEMENT, (cluster_rouge[i]-barycentre_rouge))
 				cluster_rouge[i] = cluster_rouge[i] - min(DISTANCE_DEPLACEMENT, (cluster_rouge[i]-barycentre_rouge))
 
-		# Reaffiliation des points aux nouveaux clusters
-		# valeurs_connus = dict()
-		
-		# on test le zip.. ###
-		# test_groupe = [  ]
-		
-		start_c = time.clock()
-		#numpy.set_printoptions(threshold=numpy.nan)
-		
+		# Reaffiliation des points aux nouveaux clusters		
 		distances_cluster2 = (bleu[:, numpy.newaxis] - cluster_bleu)**2 + (rouge[:, numpy.newaxis] - cluster_rouge)**2 + (vert[:, numpy.newaxis] - cluster_vert)**2
-		#print distances_cluster2
 		groupe = numpy.argmin(distances_cluster2, axis=2)
-		#print "len :"+str(len(groupe))+" pixel = "+str(nb_pixels)
-		#print "shape ="+str(groupe.shape)
-		#print groupe
-		
-		#groupe = numpy.reshape(groupe, (nb_pixels,1))
-		"""
-		distance_cluster2 = numpy.zeros(K)
-		for f in xrange(0, nb_pixels):
-			distance_cluster2 = ((bleu[f,0] - cluster_bleu)) ** 2 +(vert[f,0] - cluster_vert) ** 2 + (rouge[f,0] - cluster_rouge) ** 2
-			print distance_cluster2
-			groupe[f, 0] = numpy.argmin(distance_cluster2)
-			
-		print groupe
-		"""
-		
-		end_c = time.clock()
-		value_c = end_c - start_c
-		print "temps : %s" % (value_c)
+
 
 		# Si il n'y a pas de changement par rapport a la derniere etape : on sort
 		if( difference == 0 ):
 			there_are_no_modification = 1
 
-	print cluster_bleu
-	print cluster_vert
-	print cluster_rouge
+	# Fin de l'algo, on affiche les resultats
 
-	#Fin de l'algo, on affiche les resultats
-
-	#On change le format de groupe afin de le rammener au format de l'image d'origine
+	# On change le format de groupe afin de le rammener au format de l'image d'origine
 	groupe=numpy.reshape(groupe, (imagecolorRes.shape[0], imagecolorRes.shape[1]))
-
-	#On change chaque pixel de l'image selon le cluster auquel il appartient
-	#Il prendre comme nouvelle valeur la position moyenne du cluster
-	#imagecolorRes[:, :] = [ (cluster_bleu[int(groupe[:,:])]) , (cluster_vert[int(groupe[:,:])]), (cluster_rouge[int(groupe[:,:])]) ]
-	for i in xrange(0, imagecolorRes.shape[0]):
-		for j in xrange(0, imagecolorRes.shape[1]):
-			imagecolorRes[i,j,0] = (cluster_bleu[int(groupe[i,j])])
-			imagecolorRes[i,j,1] = (cluster_vert[int(groupe[i,j])])
-			imagecolorRes[i,j,2] = (cluster_rouge[int(groupe[i,j])])
+	
+	# si on affiche l'image, alors on convertis sinon perte de temps
+	if print_image:
+		# On change chaque pixel de l'image selon le cluster auquel il appartient
+		# Il prendre comme nouvelle valeur la position moyenne du cluster
+		for i in xrange(0, imagecolorRes.shape[0]):
+			for j in xrange(0, imagecolorRes.shape[1]):
+				imagecolorRes[i,j,0] = (cluster_bleu[int(groupe[i,j])])
+				imagecolorRes[i,j,1] = (cluster_vert[int(groupe[i,j])])
+				imagecolorRes[i,j,2] = (cluster_rouge[int(groupe[i,j])])
 
 	if (param == "HSV"):
 		imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_HSV2BGR)
 	elif(param == "LAB"):
 		imagecolorRes = cv2.cvtColor(imagecolorRes, cv2.COLOR_LAB2BGR)
+	#elif(param == "OTSU"): ### rajouter un seuil
+	#	imagecolorRes = seuil(imagecolorRes, best_seuil)
 
-	end = time.clock()
-	value = end - start
-	print "Duree = "+str(value)+"secondes pour K="+str(K)+", pour "+str(somme_etape)+" etapes et pour le mode "+str(param)
+	if print_image :
+		afficherImage("sortie", imagecolorRes)
+	
+	return sorted(zip(cluster_bleu, cluster_vert, cluster_rouge))
 
-	afficherImage("sortie", imagecolorRes)
-
-
+def find_nb_cluster(file_to_path, param):
+	number_test = 20
+	
+	print 'filename : %s, number_test : %s' % (file_to_path, number_test)
+	
+	for k_test in xrange(2, 15):
+		t = []
+		for i in xrange(0, number_test):
+			t.append(kmean(file_to_path, param, k_test, DO_NOT_PRINT_IMAGE))
+		
+		tot = 0
+		# on trouve les point associe d'un cluster a un autre et on calcul la somme des distances.
+		for l in xrange(1, number_test):
+			for i in xrange(0, k_test):
+				d = 1000000
+				
+				for j in xrange(0, k_test):
+				
+					d_temp = ((t[0][i][0] - t[l][j][0])**2 + (t[0][i][1] - t[l][j][1])**2 + (t[0][i][2] - t[l][j][2])**2)**0.5
+					if d_temp < d:
+						d = d_temp
+						
+				tot +=d
+		
+		print 'nb cluster : %s, distance = %s' % (k_test, tot)
+	
 if __name__ == "__main__":
-	main( "normal",32 )
-	#main( "HSV",3 )
-	#main( "LAB",3 )
-	#main( "OTSU",2 )
+	#numpy.random.seed( 0 )
+
+	# 1
+	#kmean('perr.jpg', "normal", 32)
+	
+	# 2
+	#kmean('perr.jpg', "normal", 32)
+	#kmean('perr.jpg', "HSV", 32)
+	#kmean('perr.jpg', "LAB", 32)
+	
+	# 3
+	#kmean('ville.png', "OTSU", 2)
+	
+	# 4
+	find_nb_cluster('mimi2.jpg', "normal")
